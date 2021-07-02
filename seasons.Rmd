@@ -14,6 +14,7 @@ library(tidyverse)
 library(rvest)
 library(stringr)
 library(magrittr)
+teams <- read_csv("teams.csv")
 ```
 
 # Web Scraping 
@@ -25,22 +26,43 @@ conf <- function(year = 2020)
   nfl_html_data <- read_html(URL)
   afc <- nfl_html_data %>% html_nodes("table.sortable") %>%  .[[1]] %>% html_table() 
   nfc <- nfl_html_data %>% html_nodes("table.sortable") %>%  .[[2]] %>% html_table()
-  combined <- afc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('AFC', Tm) ) %>% mutate(conf = "AFC") %>% relocate(conf, .after = Tm) %>% rename(team = Tm) %>% 
-    bind_rows(nfc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('NFC', Tm) ) %>% mutate(conf = "NFC") %>% relocate(conf, .after = Tm) %>% rename(team = Tm))
+  combined <- afc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('AFC', Tm) )  %>% rename(team = Tm) %>% 
+    bind_rows(nfc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('NFC', Tm) )  %>% rename(team = Tm))
   return(combined %>% mutate("year" = year, playoff = if_else(grepl("[[:punct:]]",str_sub(team, -1)), "Y", "N"),
                 team = if_else(grepl("[[:punct:]]",str_sub(team, -1)), str_sub(team, 1, nchar(team)-1), team)) %>% 
-           relocate("year", .after = team) %>% arrange(team))
+           relocate("year", .after = team) %>% left_join(teams, by = c("team")) %>% relocate(c(division, conf), .after = "year") %>%  
+           mutate(team =dplyr::recode(team, "Washington Redskins" = "Washington Football Team", "San Diego Chargers" = "Los Angeles Chargers",
+                                      "St. Louis Rams" = "Los Angeles Rams"))%>% arrange(team))
 }
 ```
 
 ```{r}
-
 nfl <- NULL
 for(i in 2002: 2020)
 {
   
-  nfl <- conf(i) %>% bind_rows(nfl)
+  nfl <- nfl %>% bind_rows(conf(i))
 }
-nfl %>% arrange(year) %>% ht(10)
 ```
+```{r}
+
+get_graph <- function(div = "E", con = "N")
+{
+  nfl %>% dplyr::filter(division == div & conf ==con) %>% mutate(W = as.numeric(W),L = as.numeric(L),T = as.numeric(T),
+                                                               T = ifelse(is.na(T), 0, T), winn_per = (W + 0.5 * T)/(W + L + T)) %>% 
+    relocate(winn_per, .after = T) %>% ggplot() +geom_smooth(aes(x=year, y=winn_per, color=team), se = F)  + 
+    labs(color = "Team",x = "Year", y = "Team's Season Winning Percentage",title = paste(con,"FC", sep="", "-", 
+                                                                        if_else(div=="E", "East", if_else(div=="N", "North", if_else(div=="S", "South", "West"))))) +
+    theme(plot.title = element_text(hjust = 0.5)) +ylim(0,1)+ scale_x_continuous( n.breaks = 10) 
+}
+get_graph(div="E", con="A")
+
+#Team Playoff berths
+nfl %>% dplyr::filter(playoff =="Y") %>% dplyr::group_by(team) %>% dplyr::summarize(playoff, count = n()) %>% select(team, count) %>% arrange(desc(count)) %>% unique()
+```
+
+
+
+
+
 

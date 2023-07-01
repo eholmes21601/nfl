@@ -9,6 +9,7 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 ```
 ```{r}
+rm(list = ls())
 library(XML)
 library(tidyverse)
 library(rvest)
@@ -23,22 +24,26 @@ from *[Pro Football Reference](https://www.pro-football-reference.com/)*
 conf <- function(year = 2020)
 {
   URL <- paste("https://www.pro-football-reference.com/years/",year,"/", sep = "")
-  nfl_html_data <- read_html(URL)
+  nfl_html_data <-  read_html(URL)
   afc <- nfl_html_data %>% html_nodes("table.sortable") %>%  .[[1]] %>% html_table() 
   nfc <- nfl_html_data %>% html_nodes("table.sortable") %>%  .[[2]] %>% html_table()
   combined <- afc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('AFC', Tm) )  %>% rename(team = Tm) %>% 
     bind_rows(nfc %>% select(-"W-L%") %>%  dplyr::filter(!grepl('NFC', Tm) )  %>% rename(team = Tm))
   return(combined %>% mutate("year" = year, playoff = if_else(grepl("[[:punct:]]",str_sub(team, -1)), "Y", "N"),
                 team = if_else(grepl("[[:punct:]]",str_sub(team, -1)), str_sub(team, 1, nchar(team)-1), team)) %>% 
-           relocate("year", .after = team) %>% left_join(teams, by = c("team")) %>% relocate(c(division, conf), .after = "year") %>%  
-           mutate(team =dplyr::recode(team, "Washington Redskins" = "Washington Football Team", "San Diego Chargers" = "Los Angeles Chargers",
-                                      "St. Louis Rams" = "Los Angeles Rams"))%>% arrange(team))
+           relocate("year", .after = team) %>%   
+           mutate(team =dplyr::recode(team, "Washington Redskins" = "Washington Commanders","Washington Football Team" = "Washington Commanders", "San Diego Chargers" = "Los Angeles Chargers",
+                                      "St. Louis Rams" = "Los Angeles Rams", 
+                                      "Oakland Raiders" = "Las Vegas Raiders",
+                                      "Los Angeles Raiders" = "Las Vegas Raiders"))%>% 
+           left_join(teams, by = c("team")) %>% relocate(c(division, conf), .after = "year") %>%
+           arrange(team))
 }
 ```
 
 ```{r}
 nfl <- NULL
-for(i in 2002: 2020)
+for(i in 2002: year(today())-1)
 {
   
   nfl <- nfl %>% bind_rows(conf(i))
@@ -55,8 +60,14 @@ get_graph <- function(div = "E", con = "N")
                                                                         if_else(div=="E", "East", if_else(div=="N", "North", if_else(div=="S", "South", "West"))))) +
     theme(plot.title = element_text(hjust = 0.5)) +ylim(0,1)+ scale_x_continuous( n.breaks = 10) 
 }
+get_graph(div="N", con="A")
+get_graph(div="S", con="A")
 get_graph(div="E", con="A")
-
+get_graph(div="W", con="A")
+get_graph(div="N", con="N")
+get_graph(div="S", con="N")
+get_graph(div="E", con="N")
+get_graph(div="W", con="N")
 #Team Playoff berths
 nfl %>% dplyr::filter(playoff =="Y") %>% dplyr::group_by(team) %>% dplyr::summarize(playoff, count = n()) %>% select(team, count) %>% arrange(desc(count)) %>% unique()
 ```
